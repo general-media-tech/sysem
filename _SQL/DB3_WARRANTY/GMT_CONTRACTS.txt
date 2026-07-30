@@ -1,0 +1,33 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — سجل أداة العقود
+-- شغّله بمحرر SQL بسوبابيس على قاعدة "الكفالة" (abppu...).
+-- آمن للتشغيل أكثر من مرة. سطر واحد خفيف لكل عقد مطبوع — لا يخزَّن نص العقد.
+-- ══════════════════════════════════════════════════════════
+
+create table if not exists contracts (
+  id bigint generated always as identity primary key,
+  contract_no text unique,              -- GMT-C-00001 (يولَّد بعد الإدراج)
+  contract_type text not null,          -- receipt | agent | employee | (أنواع مستقبلية)
+  party_name text,                      -- اسم الطرف الثاني
+  warranty_short_id text,               -- ربط بعقد الاستلام إن وُجد
+  details jsonb,                        -- حقول النموذج المدخلة (للمرجعية بالنزاعات)
+  created_by text,                      -- محرِّر العقد (من gmt_users أو "سيادي")
+  created_at timestamptz default now()
+);
+
+-- فهرسة للبحث السريع بالنزاعات
+create index if not exists contracts_party_idx on contracts (party_name);
+create index if not exists contracts_wid_idx on contracts (warranty_short_id);
+
+-- سياسة الوصول: نفس نمط جدول warranties (مفتاح anon يقرأ ويدرج).
+-- إن كانت RLS مفعّلة على القاعدة، فعّلها هنا بنفس سياسات warranties:
+alter table contracts enable row level security;
+do $pol$ begin
+  create policy contracts_anon_select on contracts for select using (true);
+exception when duplicate_object then null; end $pol$;
+do $pol$ begin
+  create policy contracts_anon_insert on contracts for insert with check (true);
+exception when duplicate_object then null; end $pol$;
+do $pol$ begin
+  create policy contracts_anon_update on contracts for update using (true) with check (true);
+exception when duplicate_object then null; end $pol$;

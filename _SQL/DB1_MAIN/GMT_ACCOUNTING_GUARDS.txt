@@ -1,0 +1,207 @@
+-- ══════════════════════════════════════════════════════════════════════
+-- GMT_ACCOUNTING_GUARDS  ·  2026-07-12
+-- الحماية المحاسبية: سجل حركة المخزون · سجل التدقيق · قفل الفترات · الصلاحيات
+--
+-- لماذا هذا الملف هو الأهم بالنظام كله؟
+-- اليوم: المخزون رقم يزيد وينقص، ولا أحد يعرف **لماذا** تغيّر. فاتورة تُحذف،
+-- كمية تُعدَّل، ترحيل يتم — والرصيد يتحرك بلا أثر. وحين يختلف الجرد الفعلي عن
+-- النظام، لا توجد أي وسيلة لمعرفة أين ضاعت القطعة. هذا بالضبط ما حصل مع
+-- الفواتير الأوروبية التي نزلت مرتين.
+--
+-- بعد هذا الملف: كل حركة مخزون مسجَّلة بمصدرها وسببها ومن قام بها ومتى،
+-- وكل تعديل حسّاس مسجَّل بقيمته قبل وبعد. الرصيد يصير **قابلاً للإثبات** لا
+-- مجرد رقم.
+--
+-- ✅ آمن للتكرار بالكامل · شغّله بعد باقي ملفات القاعدة الرئيسية.
+-- ⚠️ لا يغيّر أي سلوك قائم — إضافة بحتة. الجداول القديمة كما هي.
+-- ══════════════════════════════════════════════════════════════════════
+
+
+-- ═══════════════════════════════════════════════════════════
+-- ① سجل حركة المخزون (stock_moves) — دفتر الأستاذ للمخزون
+-- ═══════════════════════════════════════════════════════════
+create table if not exists public.stock_moves (
+  id            bigserial primary key,
+  created_at    timestamptz not null default now(),
+
+  branch_key    text,            -- الفرع/نقطة البيع (أو 'warehouse' للمستودع)
+  item_id       text,            -- معرّف الصنف بالجرد
+  item_name     text,            -- اسمه لحظة الحركة (تاريخي — لا يتأثر بتغيّر الاسم لاحقاً)
+  barcode       text,
+
+  delta         numeric not null,  -- + دخول · − خروج (لا يساوي صفراً أبداً)
+  qty_before    numeric,           -- الرصيد قبل
+  qty_after     numeric,           -- الرصيد بعد
+
+  reason        text not null,   -- سبب الحركة (انظر القيد أدناه)
+  ref_type      text,            -- نوع المستند: invoice · purchase · transfer · return · manual
+  ref_id        text,            -- رقم المستند المرتبط
+
+  actor         text,            -- من قام بالحركة (اسم المستخدم)
+  note          text,
+
+  constraint stock_moves_delta_not_zero check (delta <> 0),
+  constraint stock_moves_reason_valid check (reason in (
+    'sale',           -- بيع
+    'return',         -- مرتجع
+    'purchase',       -- شراء/استلام بضاعة
+    'transfer_in',    -- ترحيل وارد
+    'transfer_out',   -- ترحيل صادر
+    'adjust_up',      -- تسوية جرد بالزيادة
+    'adjust_down',    -- تسوية جرد بالنقص
+    'damage',         -- تلف
+    'admin_invoice',  -- فاتورة أنشأها الأدمن
+    'store_order',    -- تنفيذ أوردر من المتجر
+    'correction'      -- تصحيح خطأ
+  ))
+);
+
+create index if not exists idx_sm_item    on public.stock_moves (item_id, created_at desc);
+create index if not exists idx_sm_branch  on public.stock_moves (branch_key, created_at desc);
+create index if not exists idx_sm_ref     on public.stock_moves (ref_type, ref_id);
+create index if not exists idx_sm_created on public.stock_moves (created_at desc);
+
+comment on table public.stock_moves is
+  'دفتر أستاذ المخزون: كل تغيّر في الكمية له سطر هنا بسببه ومستنده وفاعله. لا يُحذف منه أبداً.';
+
+alter table public.stock_moves enable row level security;
+do $gmt$
+begin
+  if not exists (select 1 from pg_policies where tablename='stock_moves' and policyname='sm_all') then
+    create policy sm_all on public.stock_moves for all using (true) with check (true);
+  end if;
+end
+$gmt$;
+
+-- 🔒 حارس: لا تعديل ولا حذف من سجل المخزون — سجل إضافة فقط (append-only).
+-- التصحيح يكون بحركة مضادة (reason='correction') لا بمسح التاريخ.
+create or replace function public.gmt_stock_moves_append_only()
+returns trigger language plpgsql as $gmt$
+begin
+  raise exception 'سجل حركة المخزون سجلّ إضافة فقط — لا يُعدَّل ولا يُحذف. صحّح بحركة مضادة (reason = correction).';
+end;
+$gmt$;
+
+drop trigger if exists trg_sm_no_update on public.stock_moves;
+create trigger trg_sm_no_update before update on public.stock_moves
+  for each row execute function public.gmt_stock_moves_append_only();
+
+drop trigger if exists trg_sm_no_delete on public.stock_moves;
+create trigger trg_sm_no_delete before delete on public.stock_moves
+  for each row execute function public.gmt_stock_moves_append_only();
+
+
+-- ═══════════════════════════════════════════════════════════
+-- ② سجل التدقيق (audit_log) — من فعل ماذا ومتى
+-- ═══════════════════════════════════════════════════════════
+-- مع وجود موظفين، لا تعرف اليوم من عدّل سعراً أو حذف فاتورة أو غيّر عمولة.
+create table if not exists public.audit_log (
+  id          bigserial primary key,
+  created_at  timestamptz not null default now(),
+
+  actor       text,     -- من
+  action      text not null,   -- ماذا: create · update · delete · approve · settle · login
+  entity      text not null,   -- على ماذا: invoice · commission · product · order · warranty · user
+  entity_id   text,
+
+  before_val  jsonb,    -- القيمة قبل
+  after_val   jsonb,    -- القيمة بعد
+  note        text,
+  source      text      -- الصفحة/الأداة التي تمّ منها الإجراء
+);
+
+create index if not exists idx_al_created on public.audit_log (created_at desc);
+create index if not exists idx_al_entity  on public.audit_log (entity, entity_id);
+create index if not exists idx_al_actor   on public.audit_log (actor, created_at desc);
+
+comment on table public.audit_log is 'سجل التدقيق: كل إجراء حسّاس بقيمته قبل وبعد وفاعله. سجل إضافة فقط.';
+
+alter table public.audit_log enable row level security;
+do $gmt$
+begin
+  if not exists (select 1 from pg_policies where tablename='audit_log' and policyname='al_all') then
+    create policy al_all on public.audit_log for all using (true) with check (true);
+  end if;
+end
+$gmt$;
+
+create or replace function public.gmt_audit_append_only()
+returns trigger language plpgsql as $gmt$
+begin
+  raise exception 'سجل التدقيق سجلّ إضافة فقط — لا يُعدَّل ولا يُحذف.';
+end;
+$gmt$;
+
+drop trigger if exists trg_al_no_update on public.audit_log;
+create trigger trg_al_no_update before update on public.audit_log
+  for each row execute function public.gmt_audit_append_only();
+
+drop trigger if exists trg_al_no_delete on public.audit_log;
+create trigger trg_al_no_delete before delete on public.audit_log
+  for each row execute function public.gmt_audit_append_only();
+
+
+-- ═══════════════════════════════════════════════════════════
+-- ③ قفل الفترات المحاسبية (period_locks)
+-- ═══════════════════════════════════════════════════════════
+-- المشكلة: بعد ما تُسوّى عمولات الشهر وتُدفع الأموال، تبقى فواتير ذلك الشهر
+-- قابلة للتعديل — فتتغيّر الأرقام **بعد** أن دفعتَ عليها. هذا باب احتيال مفتوح.
+create table if not exists public.period_locks (
+  id          bigserial primary key,
+  branch_key  text not null,
+  locked_upto date not null,          -- كل ما قبل هذا التاريخ (شاملاً) مقفل
+  locked_by   text,
+  locked_at   timestamptz not null default now(),
+  note        text,
+  unique (branch_key, locked_upto)
+);
+
+alter table public.period_locks enable row level security;
+do $gmt$
+begin
+  if not exists (select 1 from pg_policies where tablename='period_locks' and policyname='pl_all') then
+    create policy pl_all on public.period_locks for all using (true) with check (true);
+  end if;
+end
+$gmt$;
+
+-- دالة مساعدة: هل التاريخ مقفل لهذا الفرع؟
+create or replace function public.gmt_is_locked(p_branch text, p_date date)
+returns boolean language sql stable as $gmt$
+  select exists (
+    select 1 from public.period_locks
+    where branch_key = p_branch and p_date <= locked_upto
+  );
+$gmt$;
+
+comment on function public.gmt_is_locked is
+  'هل هذا التاريخ داخل فترة مقفلة لهذا الفرع؟ تستدعيها الواجهة قبل السماح بتعديل فاتورة قديمة.';
+
+
+-- ═══════════════════════════════════════════════════════════
+-- ④ الصلاحيات (roles) — الكاشير لا يرى التكلفة والأرباح
+-- ═══════════════════════════════════════════════════════════
+-- اليوم: من يدخل نقطة البيع يرى **كل شيء** — سعر التكلفة، سعر الجملة، هامش
+-- الربح. أي موظف يستطيع تصوير تكاليفك كلها وأخذها لمنافس.
+alter table if exists public.gmt_users
+  add column if not exists role text not null default 'cashier';
+
+do $gmt$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'gmt_users_role_valid'
+  ) then
+    alter table public.gmt_users
+      add constraint gmt_users_role_valid
+      check (role in ('cashier', 'manager', 'admin'));
+  end if;
+end
+$gmt$;
+
+comment on column public.gmt_users.role is
+  'cashier = لا يرى التكلفة/الجملة/الربح · manager = يرى ولا يعدّل الصلاحيات · admin = كل شيء';
+
+-- ملاحظة أمنية صريحة (لا تخدع نفسك):
+-- إخفاء التكلفة بالواجهة حاجز **تجربة مستخدم**، لا حاجز أمني. مفتاح anon
+-- يستطيع نظرياً قراءة الجدول مباشرة. الحماية الحقيقية تحتاج RLS على مستوى
+-- الأعمدة أو دالة RPC تُرجع الأعمدة المسموحة حسب الدور — وهي خطوة تالية.

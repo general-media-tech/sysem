@@ -1,0 +1,45 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — (v2: وسوم $gmt$ بدل $gmt$ وقائياً — علّة محرر سوبابيس) — SQL مطلوب تشغيله مرة وحدة بمحرر SQL بسوبابيس (Supabase → SQL Editor)
+-- قبل ما تفعّل تعديلات ملف الأوردرات (orders-final.html)
+-- آمن للتشغيل أكتر من مرة
+-- ══════════════════════════════════════════════════════════
+
+-- عداد ذرّي (atomic) لأي مفتاح بجدول gmt_settings — يحل تعارض شخصين
+-- بيضيفوا أوردر بنفس اللحظة وياخدوا نفس الرقم التسلسلي.
+-- يشتغل بغض النظر عن وجود UNIQUE constraint على عمود key من عدمه.
+-- ⚠️ مهم: احذف أي نسخة قديمة أولاً (قد تكون بنوع إرجاع مختلف) لتفادي خطأ 42P13.
+-- هذه هي النسخة الصحيحة الوحيدة: تكتب بعمود value (الذي يقرأه الكود) + قفل ضد السباق.
+drop function if exists increment_settings_counter(text);
+
+create function increment_settings_counter(p_key text)
+returns integer
+language plpgsql
+security definer
+as $gmt$
+declare
+  v_id  bigint;
+  v_val integer;
+begin
+  -- قفل الصف الحالي (لو موجود) لمنع عملية تانية من قراءة نفس القيمة قبل ما نخلص
+  select id, coalesce(value::integer, 0) into v_id, v_val
+  from gmt_settings where key = p_key
+  for update;
+
+  if v_id is null then
+    v_val := 1;
+    insert into gmt_settings (key, value) values (p_key, v_val::text);
+  else
+    v_val := v_val + 1;
+    update gmt_settings set value = v_val::text where id = v_id;
+  end if;
+
+  return v_val;
+end;
+$gmt$;
+
+grant execute on function increment_settings_counter(text) to anon, authenticated;
+
+-- ══════════════════════════════════════════════════════════
+-- ملاحظة: لو جدول gmt_settings عندك بدون عمود id (بدائل مثل uuid أو مفتاح مركّب)،
+-- خبرني وبعدّل الدالة لتطابق بنية الجدول الفعلية عندك.
+-- ══════════════════════════════════════════════════════════

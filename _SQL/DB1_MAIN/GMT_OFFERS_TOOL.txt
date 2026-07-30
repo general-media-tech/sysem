@@ -1,0 +1,41 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — أداة العروض الموحّدة (gmt-offers-tool.js)
+-- شغّله بمحرر SQL بسوبابيس على القاعدة الرئيسية (ysawz...).
+-- آمن للتشغيل أكثر من مرة. لا يمس أي بيانات موجودة.
+-- ══════════════════════════════════════════════════════════
+
+-- (2026-07-17) ننشئ الجدول أولاً إن لم يكن موجوداً — حتى يعمل على قاعدة نظيفة.
+create table if not exists gmt_offers (
+  id           bigserial primary key,
+  name         text,
+  image_url    text,
+  price        numeric default 0,
+  old_price    numeric,
+  active       boolean default true,
+  created_at   timestamptz default now()
+);
+
+-- صور متعددة للعرض (image_url القديم يبقى = الصورة الأولى للتوافق مع نقطة البيع)
+alter table gmt_offers add column if not exists images jsonb;
+
+-- أهداف النشر التي اختارها الأدمن للعرض: {"store":true,"site":true}
+alter table gmt_offers add column if not exists targets jsonb;
+
+-- معرّف مرآة العرض داخل gmt_store.offers (لمزامنة التعديل/الحذف مع المتجر)
+alter table gmt_offers add column if not exists store_offer_id text;
+
+-- معرّف بطاقة العرض في news_cards بالموقع الرئيسي (لمزامنة التعديل/الحذف)
+alter table gmt_offers add column if not exists site_news_id text;
+
+-- ══════════════════════════════════════════════════════════
+-- ملاحظات:
+-- • نوع العرض الجديد 'announce' (إعلاني بلا سعر) يُخزَّن في عمود offer_type
+--   الموجود أصلاً — لا حاجة لتعديل. نقطة البيع تستثنيه بفلتر أُضيف بسطر واحد.
+-- • لا تغيير مطلوب على قاعدة المتجر ولا قاعدة الموقع الرئيسي.
+-- ══════════════════════════════════════════════════════════
+
+-- (2026-07-17) أعمدة إضافية يستعملها الكود بأسماء مختلفة — تُضاف للتوافق
+alter table gmt_offers add column if not exists is_active  boolean default true;
+alter table gmt_offers add column if not exists offer_price numeric default 0;
+alter table gmt_offers add column if not exists offer_type text;
+alter table gmt_offers add column if not exists products   jsonb;

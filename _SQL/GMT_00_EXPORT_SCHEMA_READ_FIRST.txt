@@ -1,0 +1,110 @@
+-- ══════════════════════════════════════════════════════════════════════
+--  GMT_00_EXPORT_SCHEMA  ·  2026-07-12
+--  🚨🚨 اقرأ هذا قبل أي شيء — أخطر ثغرة اكتُشفت بالفحص العميق 🚨🚨
+-- ══════════════════════════════════════════════════════════════════════
+--
+--  الاكتشاف:
+--  ملفات SQL الـ15 الموجودة بالمشروع **لا تُنشئ إلا 7 جداول**:
+--      agents · audit_log · contracts · gmt_settlements · period_locks
+--      · stock_counts · stock_moves
+--
+--  بينما الكود يستدعي **25+ جدولاً**، ومنها الجداول التي يقوم عليها النظام كله:
+--      products (73 استدعاء!) · invoices (28) · invoice_commissions (24)
+--      · invoice_items · gmt_users · gmt_orders · gmt_offers · inventory
+--      · inv_columns · gmt_customers · gmt_expenses · gmt_coupons
+--      · branch_stock_transfers · stock_transfer_items · import_log
+--      · gmt_settings · gmt_manual_debts · gmt_reservations
+--      · branch_notifications · stock_receipts · site_settings
+--
+--  السبب: هذه الجداول أُنشئت **يدوياً** داخل Supabase بجلسات سابقة، ولم
+--  يُحفَظ تعريفها في أي ملف. فملفات SQL الحالية ليست «مخطط القاعدة» —
+--  هي **رقع تعديل (patches)** تفترض أن القاعدة موجودة أصلاً.
+--
+--  ⛔ الخطر المباشر — وهو بالضبط خطتك المعلنة:
+--  قلتَ: «بدي آخذ الملفات وأرفعها بمشروع جديد وأبدأ». لو فعلتَ ذلك على
+--  مشروع Supabase **فارغ** وشغّلت الـ15 ملفاً، فسينجح تشغيلها كلها بلا
+--  خطأ ظاهر… ثم **لن يعمل شيء إطلاقاً**: لا منتجات، لا فواتير، لا مستخدمين
+--  — لأن جداولها غير موجودة. ودليل النشر يقول للمهندس «شغّل SQL» فيظنّ
+--  أنه أنهى الخطوة الأولى بنجاح.
+--
+--  هذا **بالضبط** ما كنت تخشاه: خطأ سطحي (أسماء مجلدات) كشف خطأً عميقاً.
+--
+-- ══════════════════════════════════════════════════════════════════════
+--  ✅ الحل — خطوتان، عشر دقائق:
+--
+--  【١】 شغّل الاستعلام أدناه على **كل قاعدة من قواعدك الأربع** الحيّة
+--       (الرئيسية · المتجر · الكفالة · الموقع).
+--  【٢】 انسخ العمود الناتج (ddl) كاملاً، واحفظه بملف:
+--          01_SQL/على_القاعدة_الرئيسية/GMT_00_BASE_SCHEMA.txt
+--          01_SQL/على_قاعدة_المتجر/GMT_00_BASE_SCHEMA_STORE.txt
+--          … وهكذا لكل قاعدة.
+--
+--  عندها فقط تصير حزمتك **قابلة للنشر على مشروع جديد من الصفر**.
+--  ترتيب التشغيل على القاعدة الجديدة يصير:
+--      GMT_00_BASE_SCHEMA  →  ثم باقي الـ15 ملفاً.
+-- ══════════════════════════════════════════════════════════════════════
+
+
+-- ═══ الاستعلام: يولّد CREATE TABLE لكل جداولك تلقائياً ═══
+select
+  'create table if not exists public.' || c.relname || E' (\n' ||
+  string_agg(
+    '  ' || a.attname || ' ' ||
+    pg_catalog.format_type(a.atttypid, a.atttypmod) ||
+    coalesce(' default ' || pg_get_expr(d.adbin, d.adrelid), '') ||
+    case when a.attnotnull then ' not null' else '' end,
+    E',\n' order by a.attnum
+  ) || E'\n);'
+  as ddl
+from pg_class c
+join pg_namespace n  on n.oid = c.relnamespace
+join pg_attribute a  on a.attrelid = c.oid
+left join pg_attrdef d on d.adrelid = c.oid and d.adnum = a.attnum
+where n.nspname = 'public'
+  and c.relkind = 'r'          -- جداول عادية فقط
+  and a.attnum > 0
+  and not a.attisdropped
+group by c.relname
+order by c.relname;
+
+
+-- ═══ ملحق (١): المفاتيح الأساسية والفهارس ═══
+-- شغّله بعد السابق وانسخ الناتج بذيل ملف BASE_SCHEMA.
+select indexdef || ';' as ddl
+from pg_indexes
+where schemaname = 'public'
+order by tablename, indexname;
+
+
+-- ═══ ملحق (٢): سياسات RLS ═══
+-- بلا هذه السياسات ستُنشأ الجداول لكن القراءة/الكتابة ستُرفض بصمت
+-- (تُرجع القاعدة مصفوفة فارغة — لا خطأ! — فتظن أن البيانات ضاعت).
+select
+  'alter table public.' || tablename || ' enable row level security;' || E'\n' ||
+  'create policy ' || quote_ident(policyname) || ' on public.' || tablename ||
+  ' for ' || lower(cmd) ||
+  coalesce(' using (' || qual || ')', '') ||
+  coalesce(' with check (' || with_check || ')', '') || ';'
+  as ddl
+from pg_policies
+where schemaname = 'public'
+order by tablename, policyname;
+
+
+-- ═══ ملحق (٣): التحقق السريع — هل نقص جدول؟ ═══
+-- شغّله على القاعدة الرئيسية بعد النشر. أي سطر يرجع = جدول ناقص = ميزة معطّلة.
+with expected(t) as (
+  values ('products'), ('invoices'), ('invoice_items'), ('invoice_commissions'),
+         ('gmt_users'), ('gmt_orders'), ('gmt_offers'), ('inventory'),
+         ('inv_columns'), ('gmt_customers'), ('gmt_expenses'), ('gmt_coupons'),
+         ('gmt_settings'), ('gmt_manual_debts'), ('gmt_reservations'),
+         ('branch_stock_transfers'), ('stock_transfer_items'), ('branch_transfers'),
+         ('branch_notifications'), ('import_log'), ('stock_receipts'),
+         ('stock_moves'), ('audit_log'), ('period_locks'), ('gmt_settlements')
+)
+select e.t as "🔴 جدول ناقص — الميزة المرتبطة به معطّلة"
+from expected e
+where not exists (
+  select 1 from information_schema.tables
+  where table_schema = 'public' and table_name = e.t
+);

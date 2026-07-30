@@ -1,0 +1,49 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — توحيد نظام العروض على gmt_offers (نسخة v2 — 2026-07-06)
+-- شغّله بمحرر SQL بسوبابيس على القاعدة الرئيسية. آمن للتشغيل أكتر من مرة.
+-- v2: أول تشغيل حي كشف أن product_offers.product_id نوعه uuid بينما
+--     gmt_offers.product_id نصّي → أُضيفت تحويلات ::text، وغُلّف الترحيل
+--     بحارس أخطاء: أي مفاجأة ببنية الجدول القديم تتخطى الترحيل بإشعار
+--     بدل إسقاط الملف كله. ووُسم الـ do بوسم مسمى بدل $$.
+-- ══════════════════════════════════════════════════════════
+
+alter table gmt_offers add column if not exists product_id text;
+alter table gmt_offers add column if not exists ends_at timestamptz;
+alter table gmt_offers add column if not exists original_price numeric;
+
+create index if not exists idx_gmt_offers_product_id on gmt_offers(product_id);
+create index if not exists idx_gmt_offers_active on gmt_offers(is_active);
+
+-- ══════════════════════════════════════════════════════════
+-- (اختياري) ترحيل عروض الجدول القديم product_offers إن وُجد
+-- ══════════════════════════════════════════════════════════
+do $mig$
+begin
+  if exists (select 1 from information_schema.tables where table_name = 'product_offers') then
+    begin
+      insert into gmt_offers (name, offer_price, original_price, product_id, offer_type, is_active, ends_at)
+      select
+        coalesce(old.label, 'عرض مُرحَّل'),
+        old.offer_price,
+        old.original_price,
+        old.product_id::text,          -- v2: الجدول القديم uuid → نحوّله نصاً
+        'single',
+        coalesce(old.is_active, true),
+        old.ends_at
+      from product_offers old
+      where not exists (
+        select 1 from gmt_offers ng
+        where ng.product_id = old.product_id::text   -- v2: مقارنة نص بنص
+          and ng.offer_type = 'single' and ng.is_active = true
+      );
+      raise notice 'تم ترحيل عروض product_offers القديمة إلى gmt_offers';
+    exception when others then
+      -- بنية الجدول القديم مختلفة عن المتوقع؟ نتخطى الترحيل ولا نُسقط الملف —
+      -- يمكنك إعادة إنشاء العروض القديمة (إن وُجدت) من أداة العروض الموحّدة بدقيقة.
+      raise notice 'تخطّي ترحيل product_offers (بنية مختلفة): %', sqlerrm;
+    end;
+  end if;
+end $mig$;
+
+-- بعد التأكد أن كل شيء يعمل يمكنك حذف الجدول القديم يدوياً:
+--   drop table if exists product_offers;

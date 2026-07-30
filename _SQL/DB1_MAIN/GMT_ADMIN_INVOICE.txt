@@ -1,0 +1,24 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — فاتورة الأدمن المخصومة من فرع محدد (م22)
+-- شغّله بمحرر SQL بسوبابيس. آمن للتشغيل أكثر من مرة.
+-- ══════════════════════════════════════════════════════════
+
+-- علامة أن الفاتورة أنشأها الأدمن (لتمييزها وإظهار إشعار "تحتاج تنفيذ" للفرع)
+alter table invoices add column if not exists created_by_admin boolean default false;
+
+-- حالة التنفيذ: pending = بانتظار تنفيذ الفرع، executed = نُفّذت (طُبعت/سُلّمت)
+-- تبقى NULL للفواتير العادية (غير المنشأة من الأدمن)
+alter table invoices add column if not exists admin_exec_status text;
+
+-- من نفّذها ومتى (الفرع أو الأدمن)
+alter table invoices add column if not exists admin_exec_by text;
+alter table invoices add column if not exists admin_exec_at timestamptz;
+
+-- فهرس لتسريع جلب الفواتير التي تحتاج تنفيذ
+create index if not exists idx_invoices_admin_exec on invoices(admin_exec_status) where admin_exec_status = 'pending';
+
+-- ══════════════════════════════════════════════════════════
+-- ملاحظة: المخزون يُخصم فوراً عند إنشاء الأدمن للفاتورة (مثل أي بيع)،
+-- و"التنفيذ" هو إقرار الفرع بأنه طبعها وسلّمها — وليس شرطاً لخصم المخزون.
+-- إن لم ينفّذها الفرع، يمكن للأدمن تنفيذها من عنده.
+-- ══════════════════════════════════════════════════════════

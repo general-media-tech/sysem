@@ -1,0 +1,12 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — م6-ب: عمولة البيع الآجل تُستحق عند التحصيل (القاعدة الرئيسية)
+-- شغّله بمحرر SQL بسوبابيس. آمن للتكرار.
+-- المنطق: فاتورة آجلة → العمولة تُسجَّل بـawaiting_collection=true (معلّقة، لا تُحسب
+-- ضمن المستحق ولا تدخل التسوية) → عند تحصيل ثمن الفاتورة كاملاً تُحرَّر تلقائياً.
+-- ══════════════════════════════════════════════════════════
+alter table invoice_commissions add column if not exists awaiting_collection boolean default false;
+create index if not exists idx_comm_awaiting on invoice_commissions(awaiting_collection);
+
+-- (اختياري) لو أردت تحرير عمولات فواتير آجلة قديمة سُدِّدت فعلاً:
+-- update invoice_commissions c set awaiting_collection = false
+-- from invoices i where c.invoice_id = i.id and i.payment_status = 'paid';

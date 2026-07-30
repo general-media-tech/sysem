@@ -1,0 +1,62 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — م6: نظام الحساب الجاري والتسويات (القاعدة الرئيسية)
+-- شغّله بمحرر SQL بسوبابيس. آمن للتكرار.
+-- الفكرة: كل فرع/كاشير له "حساب جارٍ" دائم = عمولاته الموافقة ناقص المدفوع.
+-- كل دفعة أو سحب أو تسوية تُسجَّل سطراً واحداً، وكل عمولة تُختم برقم تسويتها
+-- فلا يمكن دفعها مرتين إطلاقاً (نهاية التحصيل المزدوج).
+-- ══════════════════════════════════════════════════════════
+
+-- ١) جدول التسويات/الدفعات (السجل الكامل)
+create table if not exists gmt_settlements (
+  id bigint generated always as identity primary key,
+  settlement_no text unique,                 -- GMT-S-00001
+  branch_key text not null,
+  cashier_name text,                         -- إن كانت تسوية كاشير محدد
+  kind text not null default 'settlement',   -- settlement (تسوية دورية) | single (عمولة فاتورة) | withdraw (سحب من الصندوق)
+  period_from date,
+  period_to date,
+  comm_total numeric default 0,              -- مجموع العمولات المشمولة
+  paid_amount numeric default 0,             -- المدفوع فعلاً للكاشير من العمولات
+  withdraw_amount numeric default 0,         -- المبلغ المسحوب من الصندوق (kind=withdraw)
+  cash_before numeric default 0,             -- الصندوق قبل العملية (لحظة التسجيل)
+  cash_after numeric default 0,              -- الصندوق بعدها
+  owed_after numeric default 0,              -- الباقي بذمة الإدارة للكاشير بعدها
+  invoice_count int default 0,
+  note text,
+  created_by text,
+  created_at timestamptz default now()
+);
+create index if not exists idx_settl_branch on gmt_settlements(branch_key);
+create index if not exists idx_settl_date on gmt_settlements(created_at);
+
+-- ٢) ختم العمولة برقم تسويتها (المنع الذرّي للتكرار)
+alter table invoice_commissions add column if not exists settlement_id bigint;
+alter table invoice_commissions add column if not exists cashier_name text;
+create index if not exists idx_comm_settlement on invoice_commissions(settlement_id);
+-- كل عمولة مدفوعة يجب أن تحمل رقم تسوية (وإلا فهي غير مدفوعة) — الفهرس يمنع الازدواج منطقياً
+create index if not exists idx_comm_paid on invoice_commissions(paid);
+
+-- ٣) وسم حركة الصندوق بالتسوية (للسحوبات المرتبطة)
+-- ⚠️ (2026-07-17) تعريف branch_transfers قبل أي alter عليه — كان مفقوداً
+-- فيسبّب خطأ «relation branch_transfers does not exist» عند التشغيل النظيف.
+-- الأعمدة مطابقة لما يقرأه/يكتبه الكود (04_أدمن · 02_نقطة_البيع · 05_الأوردرات · 17_النسخ).
+create table if not exists branch_transfers (
+  id            bigserial primary key,
+  branch_key    text,
+  amount        numeric   default 0,
+  type          text,                        -- نوع الحركة
+  kind          text,                        -- collect | withdraw | expense | commission_payout
+  note          text,
+  transfer_date date,
+  confirmed_by  text,
+  settlement_id bigint,
+  created_at    timestamptz not null default now()
+);
+alter table if exists branch_transfers add column if not exists settlement_id bigint;
+alter table if exists branch_transfers add column if not exists kind text;  -- collect | withdraw | expense | commission_payout
+
+-- ٤) سياسات (نفس نمط الجداول الأخرى)
+alter table gmt_settlements enable row level security;
+do $pol$ begin
+  create policy settl_anon_all on gmt_settlements for all using (true) with check (true);
+exception when duplicate_object then null; end $pol$;

@@ -1,0 +1,17 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — ترقية سجل أداة العقود (إصدار 2 — 2026-07-12)
+-- شغّله بمحرر SQL بسوبابيس على قاعدة "الكفالة" (abppu...) بعد GMT_CONTRACTS.txt
+-- آمن للتشغيل أكثر من مرة.
+-- الغاية: أرشفة النص المطبوع فعلاً (بعد التحرير الحر) = دليل الشركة عند النزاع،
+--         + تمييز العقود التي حُرّرت يدوياً قبل الطباعة.
+-- ══════════════════════════════════════════════════════════
+
+alter table contracts add column if not exists manual_edit boolean default false;   -- هل استُعمل وضع التحرير الحر؟
+alter table contracts add column if not exists snapshot_html text;                  -- نسخة النص المطبوع فعلاً
+alter table contracts add column if not exists printed_at timestamptz;              -- لحظة الاعتماد/الطباعة
+alter table contracts add column if not exists app_version text;                    -- إصدار الأداة
+
+create index if not exists contracts_type_idx on contracts (contract_type);
+create index if not exists contracts_created_idx on contracts (created_at desc);
+
+-- ملاحظة: عمود snapshot_html قد يكبر مع الوقت — يبقى مقبولاً (نص فقط، لا صور خارجية).

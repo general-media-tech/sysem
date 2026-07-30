@@ -1,0 +1,34 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — جدول وكلائنا المعتمدين (قسم «وكلاؤنا» بالموقع الرئيسي)
+-- ⚠️ شغّله على قاعدة "الموقع الرئيسي" (znpak...) — ليست الرئيسية ولا الكفالة!
+-- آمن للتكرار. الإدارة حالياً: Supabase → Table editor → agents.
+-- ══════════════════════════════════════════════════════════
+create table if not exists agents (
+  id bigint generated always as identity primary key,
+  name text not null,            -- اسم الوكيل / المحل
+  city text,                     -- المدينة (اختياري)
+  phone text,                    -- الهاتف (اختياري — يظهر كزر اتصال)
+  sort_order int default 0,      -- ترتيب الظهور
+  is_active boolean default true,
+  created_at timestamptz default now()
+);
+alter table agents enable row level security;
+do $pol$ begin
+  create policy agents_anon_select on agents for select using (true);
+exception when duplicate_object then null; end $pol$;
+do $pol$ begin
+  create policy agents_anon_write on agents for all using (true) with check (true);
+exception when duplicate_object then null; end $pol$;
+-- مثال إضافة وكيل (عدّل القيم):
+-- insert into agents (name, city, phone, sort_order) values ('محل النور للتصوير','حلب','0999999999',1);
+
+-- ═══════════════════════════════════════════════════════════════
+-- (2026-07-17) جدول إعدادات الموقع — كان يستعمله الكود دون تعريف
+-- يمنع خطأ «site_settings does not exist» على قاعdة جديدة.
+-- ═══════════════════════════════════════════════════════════════
+create table if not exists site_settings (
+  id         bigserial primary key,
+  key        text unique,
+  value      text,
+  updated_at timestamptz default now()
+);

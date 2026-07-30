@@ -1,0 +1,77 @@
+-- ══════════════════════════════════════════════════════════
+-- GMT — SQL نقطة البيع (نسخة v2 — 2026-07-06)
+-- شغّله بمحرر SQL بسوبابيس على القاعدة الرئيسية. آمن للتشغيل أكتر من مرة.
+-- v2: استُبدلت علامات $$ بوسوم مسماة $gmt$ — بعض نسخ محرر سوبابيس
+--     تكسر $$ وتعطي "syntax error at or near execute" (هذا ما حدث بأول تشغيل).
+-- ══════════════════════════════════════════════════════════
+
+-- ────────────────────────────────────────────────
+-- ١) خصم مخزون ذرّي (atomic) — يحل تعارض بيعتين متزامنتين لنفس المنتج
+--    بنفس الفرع. نفس الدالة تُستخدم بمزامنة الفواتير الأوفلاين.
+-- ────────────────────────────────────────────────
+create or replace function decrement_branch_stock(
+  p_product_id text,
+  p_branch_key text,
+  p_qty        numeric
+)
+returns numeric
+language plpgsql
+security definer
+as $gmt$
+declare
+  v_new numeric;
+begin
+  execute format(
+    'update products set %I = greatest(0, coalesce(%I,0) - $1) where id::text = $2 returning %I',
+    p_branch_key, p_branch_key, p_branch_key
+  ) into v_new using p_qty, p_product_id;
+
+  if v_new is null then
+    raise exception 'المنتج % غير موجود', p_product_id;
+  end if;
+
+  return v_new;
+end;
+$gmt$;
+
+-- نفس الفكرة للإرجاع (إضافة كمية بدل طرحها)
+create or replace function increment_branch_stock(
+  p_product_id text,
+  p_branch_key text,
+  p_qty        numeric
+)
+returns numeric
+language plpgsql
+security definer
+as $gmt$
+declare
+  v_new numeric;
+begin
+  execute format(
+    'update products set %I = coalesce(%I,0) + $1 where id::text = $2 returning %I',
+    p_branch_key, p_branch_key, p_branch_key
+  ) into v_new using p_qty, p_product_id;
+
+  if v_new is null then
+    raise exception 'المنتج % غير موجود', p_product_id;
+  end if;
+
+  return v_new;
+end;
+$gmt$;
+
+-- السماح لمفتاح anon (الذي تستخدمه نقطة البيع) بنداء الدالتين
+grant execute on function decrement_branch_stock(text, text, numeric) to anon, authenticated;
+grant execute on function increment_branch_stock(text, text, numeric) to anon, authenticated;
+
+-- ────────────────────────────────────────────────
+-- ٢) ربط فاتورة المرتجع بالفاتورة الأصلية:
+--    منع إرجاع نفس الفاتورة أكثر من مرة + حساب عكس العمولة بدقة
+-- ────────────────────────────────────────────────
+alter table invoices add column if not exists original_invoice_id text;
+create index if not exists idx_invoices_original_invoice_id on invoices(original_invoice_id);
+
+-- ══════════════════════════════════════════════════════════
+-- ملاحظة: لو عمود id بجدول invoices/products عندك uuid وليس text،
+-- الدوال شغالة برضه لأنها تقارن id::text — لا داعي لتغيير شيء.
+-- ══════════════════════════════════════════════════════════
