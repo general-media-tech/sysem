@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GMT — بوابة النظام</title>
+<link rel="icon" href="_shared/favicon.ico">
+<style>
+  :root{ --red:#C00012; --dark:#0f1219; --card:#fff; --muted:#6b7280; --line:#e5e7eb; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Tahoma,system-ui,sans-serif;background:linear-gradient(160deg,#f8f9fb,#eef1f5);color:#1f2937;min-height:100vh;padding:20px}
+  .wrap{max-width:1100px;margin:0 auto}
+  header{text-align:center;padding:30px 0 24px}
+  .logo{width:76px;height:76px;border-radius:18px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:30px;font-weight:900;box-shadow:0 10px 30px rgba(192,0,18,.3);margin-bottom:14px}
+  h1{font-size:26px;font-weight:900;color:var(--dark)}
+  .sub{color:var(--muted);font-size:14px;margin-top:6px}
+  .section{margin-top:28px}
+  .section h2{font-size:15px;font-weight:800;color:var(--red);margin-bottom:12px;padding-right:10px;border-right:4px solid var(--red)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;text-decoration:none;color:inherit;transition:.2s;display:flex;align-items:center;gap:12px}
+  .card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.08);border-color:var(--red)}
+  .ic{font-size:26px;flex-shrink:0}
+  .tx{flex:1}
+  .tx .t{font-weight:800;font-size:14px}
+  .tx .d{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .badge{font-size:10px;padding:2px 8px;border-radius:99px;font-weight:800}
+  .b-emp{background:#eff6ff;color:#1d4ed8}
+  .b-cust{background:#f0fdf4;color:#15803d}
+  .b-tool{background:#fef3c7;color:#b45309}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin:36px 0 10px}
+</style>
+</head>
+<body>
+  <script src="_shared/gmt-updater.js"></script>
+<div class="wrap">
+  <header>
+    <div class="logo">GMT</div>
+    <h1>بوابة نظام General Media Tech</h1>
+    <div class="sub">كل روابط النظام في مكان واحد</div>
+  </header>
+
+  <div class="section">
+    <h2>👥 الموظفون والإدارة</h2>
+    <div class="grid">
+      <a class="card" href="02_POS/index-final.html"><span class="ic">🛒</span><div class="tx"><div class="t">نقطة البيع</div><div class="d">البيع والفواتير</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="03_INVENTORY/index_inventory.html"><span class="ic">📦</span><div class="tx"><div class="t">الجرد</div><div class="d">المخزون والمنتجات</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="03_INVENTORY/18_طابعة_الملصقات.html"><span class="ic">🏷️</span><div class="tx"><div class="t">طابعة الملصقات</div><div class="d">باركود وأسعار</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="04_ADMIN_POS/admin-final.html"><span class="ic">💼</span><div class="tx"><div class="t">أدمن نقاط البيع</div><div class="d">إدارة المبيعات</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="05_ORDERS/orders-final.html"><span class="ic">📋</span><div class="tx"><div class="t">الأوردرات</div><div class="d">الطلبات</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="06_PURCHASES/purchases_standalone.html"><span class="ic">🏭</span><div class="tx"><div class="t">المشتريات</div><div class="d">الشراء والشحنات</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="07_BRIDGE/index.html"><span class="ic">🌉</span><div class="tx"><div class="t">الجسر</div><div class="d">الربط والتحويل</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="09_ADMIN_STORE/index.html"><span class="ic">🏪</span><div class="tx"><div class="t">أدمن المتجر</div><div class="d">إدارة المتجر</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="11_WARRANTY_ADMIN/index.html"><span class="ic">🛡️</span><div class="tx"><div class="t">أدمن الكفالة</div><div class="d">إدارة الكفالات</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="14_CONTRACTS/index.html"><span class="ic">📜</span><div class="tx"><div class="t">العقود</div><div class="d">عقود ونماذج</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="15_WEBSITE/admin.html"><span class="ic">🌐</span><div class="tx"><div class="t">أدمن الموقع</div><div class="d">إدارة الموقع</div></div><span class="badge b-emp">موظف</span></a>
+      <a class="card" href="17_BACKUP/index.html"><span class="ic">💾</span><div class="tx"><div class="t">النسخ الاحتياطي</div><div class="d">حفظ البيانات</div></div><span class="badge b-emp">موظف</span></a>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>🌐 صفحات الزبون (عامة)</h2>
+    <div class="grid">
+      <a class="card" href="08_STORE/index.html"><span class="ic">🛍️</span><div class="tx"><div class="t">المتجر</div><div class="d">تسوّق المنتجات</div></div><span class="badge b-cust">زبون</span></a>
+      <a class="card" href="10_WARRANTY_CREATE/index.html"><span class="ic">✅</span><div class="tx"><div class="t">إنشاء الكفالة</div><div class="d">تسجيل كفالة</div></div><span class="badge b-cust">زبون</span></a>
+      <a class="card" href="12_WARRANTY_SEARCH/index.html"><span class="ic">🔍</span><div class="tx"><div class="t">بحث الكفالة</div><div class="d">استعلام كفالة</div></div><span class="badge b-cust">زبون</span></a>
+      <a class="card" href="16_TRACKING/index.html"><span class="ic">🚚</span><div class="tx"><div class="t">تتبّع الشحنة</div><div class="d">حالة الطلب</div></div><span class="badge b-cust">زبون</span></a>
+      <a class="card" href="15_WEBSITE/index.html"><span class="ic">🏠</span><div class="tx"><div class="t">الموقع الرئيسي</div><div class="d">واجهة الشركة</div></div><span class="badge b-cust">زبون</span></a>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>🔧 الأدوات والمالك</h2>
+    <div class="grid">
+      <a class="card" href="13_SOVEREIGN_ADMIN/index.html"><span class="ic">👑</span><div class="tx"><div class="t">الأدمن السيادي</div><div class="d">لوحة المالك</div></div><span class="badge b-tool">مالك</span></a>
+      <a class="card" href="19_PROTECTION/index.html"><span class="ic">🛡️</span><div class="tx"><div class="t">بوتات الحماية</div><div class="d">التقارير والفحص</div></div><span class="badge b-tool">مالك</span></a>
+      <a class="card" href="20_KNOWLEDGE/index.html"><span class="ic">📚</span><div class="tx"><div class="t">مركز المعرفة</div><div class="d">التوثيق والسجلات</div></div><span class="badge b-tool">مالك</span></a>
+      <a class="card" href="21_INSPECTOR/index.html"><span class="ic">🔬</span><div class="tx"><div class="t">الفاحص المركزي</div><div class="d">فحص كل الصفحات</div></div><span class="badge b-tool">مالك</span></a>
+    </div>
+  </div>
+
+  <footer>
+    General Media Tech — بوابة النظام · نسخة 2026-07-24
+  </footer>
+</div>
+</body>
+</html>
